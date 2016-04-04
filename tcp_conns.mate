@@ -1,0 +1,36 @@
+// Wireshark MATE plugin config that marks "complete TCP connections" when they occur.
+// Revision 5
+// To add to Wireshark: Edit -> Preferences -> Protocols -> MATE
+// Filter for complete connections using: mate.tcp_ses.Time
+// Adapted from "TCP Session" example: http://wiki.wireshark.org/Mate/Examples
+
+// some basic TCP connection start/stop logic
+Transform tcp_conn {
+    // if SYN=1+ACK=0 then connection starts
+    Match Strict (tcp_syn=1, tcp_ack=0) Replace (tcp_start=1, tcp_stop=0);
+    // if RESET=1 or FIN=1+ACK=1 then connection stops
+    Match Strict (tcp_reset=1) Replace (tcp_stop=1);
+    Match Strict (tcp_fin=1, tcp_ack=1) Replace (tcp_stop=1);
+};
+
+// grab per-packet information for grouping
+Pdu tcp_pdu Proto tcp Transport tcp {
+    // key on the Wireshark stream enumeration instead of ip:port pair hash
+    Extract stream From tcp.stream;
+    Extract tcp_syn From tcp.flags.syn;
+    Extract tcp_ack From tcp.flags.ack;
+    Extract tcp_reset From tcp.flags.reset;
+    Extract tcp_fin From tcp.flags.fin;
+    // apply TCP connection logic
+    Transform tcp_conn;
+    // comment the following line to get the full output
+    DiscardPduData true;
+};
+
+// if tcp_start and tcp_stop are set for any key-group then we have a connection
+Gop tcp_ses On tcp_pdu Match (stream) {
+    Start (tcp_start=1);
+    Stop (tcp_stop=1);
+};
+
+Done;
